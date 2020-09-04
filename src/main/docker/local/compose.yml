@@ -1,0 +1,153 @@
+version: '3.8'
+services:
+  eureka:
+    image: pulawskk/dbs-eureka
+    ports:
+      - 8761:8761
+  config:
+    image: pulawskk/dbs-config
+    ports:
+      - 8888:8888
+    depends_on:
+      - eureka
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://netflix:eureka@eureka:8761/eureka/
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://netflix:eureka@eureka:8761/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  jms:
+    image: vromero/activemq-artemis
+    ports:
+      - 8161:8161
+      - 61616:61616
+    environment:
+      ARTEMIS_USERNAME: myuser
+      ARTEMIS_PASSWORD: password
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://config:8888/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  zipkin:
+    image: openzipkin/zipkin
+    ports:
+      - 9411:9411
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://config:8888/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  db-food:
+    image: postgres:9.6
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: food
+    ports:
+      - 5432:5432
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://config:8888/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  food-service:
+    image: pulawskk/dbs-food
+    ports:
+      - 8882:8882
+    depends_on:
+      - eureka
+      - config
+      - db-food
+    environment:
+      EUREKA_HOST: http://netflix:eureka@eureka:8761/eureka
+      SPRING_ZIPKIN_BASEURL: http://zipkin
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_CLOUD_CONFIG_URI: http://config:8888
+      SPRING_CLOUD_CONFIG_USERNAME: MyUserName
+      SPRING_CLOUD_CONFIG_PASSWORD: MySecretPassword
+      POSTGRES_HOST: db-food:5432
+      POSTGRES_DB: food
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      COM_PULAWSKK_TEST: TEST+KAROL
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://config:8888/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  customer-service:
+    image: pulawskk/dbs-customer
+    ports:
+      - 8883:8883
+    depends_on:
+      - eureka
+      - config
+      - db-food
+      - jms
+      - food-service
+    environment:
+      EUREKA_HOST: http://netflix:eureka@eureka:8761/eureka
+      SPRING_ZIPKIN_BASEURL: http://zipkin
+      SPRING_CLOUD_CONFIG_URI: http://config:8888
+      SPRING_CLOUD_CONFIG_USERNAME: MyUserName
+      SPRING_CLOUD_CONFIG_PASSWORD: MySecretPassword
+      SPRING_PROFILES_ACTIVE: dev
+      DBS_FOOD_HOSTNAME: http://food-service
+      JMS_HOST: jms
+  db-order:
+    image: postgres:9.6
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: order
+    ports:
+      - 5433:5432
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://config:8888/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  order-service:
+    image: pulawskk/dbs-order
+    ports:
+      - 8884:8884
+    depends_on:
+      - eureka
+      - config
+      - db-food
+      - jms
+      - food-service
+      - customer-service
+    environment:
+      EUREKA_HOST: http://netflix:eureka@eureka:8761/eureka
+      SPRING_ZIPKIN_BASEURL: http://zipkin
+      SPRING_CLOUD_CONFIG_URI: http://config:8888
+      SPRING_CLOUD_CONFIG_USERNAME: MyUserName
+      SPRING_CLOUD_CONFIG_PASSWORD: MySecretPassword
+      SPRING_PROFILES_ACTIVE: dev
+      JMS_HOST: jms
+      POSTGRES_HOST: db-order:5432
+      POSTGRES_DB: order
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+  delivery-service:
+    image: pulawskk/dbs-delivery
+    ports:
+      - 8885:8885
+    depends_on:
+      - eureka
+      - config
+      - db-food
+      - jms
+      - food-service
+      - order-service
+    environment:
+      EUREKA_HOST: http://netflix:eureka@eureka:8761/eureka
+      SPRING_ZIPKIN_BASEURL: http://zipkin
+      SPRING_CLOUD_CONFIG_URI: http://config:8888
+      SPRING_CLOUD_CONFIG_USERNAME: MyUserName
+      SPRING_CLOUD_CONFIG_PASSWORD: MySecretPassword
+      SPRING_PROFILES_ACTIVE: dev
+      JMS_HOST: jms
